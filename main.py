@@ -7,7 +7,7 @@ import os
 
 from models import StudentBase, StudentCreate, AssessmentSubmission, AssessmentResult, Answer, Question, AdminLogin
 from database import students_collection, questions_collection, results_collection, otp_collection, admins_collection, get_db
-from utils import generate_otp, calculate_scholarship, send_sms_otp, hash_password, verify_password, create_access_token
+from utils import generate_otp, calculate_scholarship, send_sms_otp, hash_password, verify_password, create_access_token, normalize_phone
 from bson import ObjectId
 
 app = FastAPI(title="Skill Assessment Academy API")
@@ -58,6 +58,7 @@ async def admin_login(login: AdminLogin):
 
 @app.post("/api/register")
 async def register_student(student: StudentCreate):
+    student.phone = normalize_phone(student.phone)
     existing = await students_collection.find_one({"phone": student.phone})
     if existing:
         await students_collection.update_one(
@@ -74,7 +75,8 @@ async def register_student(student: StudentCreate):
 
 @app.post("/api/send-otp")
 async def request_otp(phone: str = Body(..., embed=True)):
-    otp = generate_otp()
+    phone = normalize_phone(phone)
+    otp = generate_otp(length=4)
     expires_at = datetime.utcnow() + timedelta(minutes=5)
     await otp_collection.update_one(
         {"phone": phone},
@@ -82,10 +84,16 @@ async def request_otp(phone: str = Body(..., embed=True)):
         upsert=True
     )
     await send_sms_otp(phone, otp)
-    return {"message": "OTP sent."}
+    
+    response_data = {"message": "OTP sent."}
+    if os.getenv("NODE_ENV") == "development":
+        response_data["otp"] = otp
+    
+    return response_data
 
 @app.post("/api/verify-otp")
 async def verify_otp(phone: str = Body(...), otp: str = Body(...)):
+    phone = normalize_phone(phone)
     stored_otp = await otp_collection.find_one({"phone": phone})
     if not stored_otp or stored_otp["otp"] != otp:
         raise HTTPException(status_code=400, detail="Invalid OTP.")
@@ -136,6 +144,7 @@ async def bulk_add_questions(questions: list[Question]):
 
 @app.get("/api/questions")
 async def get_questions_by_lang(phone: str, language: str = "English"):
+    phone = normalize_phone(phone)
     student = await students_collection.find_one({"phone": phone})
     category = student.get("category", "School") if student else "School"
     
@@ -151,6 +160,7 @@ async def get_questions_by_lang(phone: str, language: str = "English"):
 
 @app.post("/api/submit-assessment")
 async def submit_assessment(submission: AssessmentSubmission):
+    submission.phone = normalize_phone(submission.phone)
     student = await students_collection.find_one({"phone": submission.phone, "is_verified": True})
     if not student:
         raise HTTPException(status_code=403, detail="Student not verified.")
