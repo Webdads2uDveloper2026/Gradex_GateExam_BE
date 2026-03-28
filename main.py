@@ -145,13 +145,12 @@ async def bulk_add_questions(questions: list[Question]):
 @app.get("/api/questions")
 async def get_questions_by_lang(phone: str):
     phone = normalize_phone(phone)
-    student = await students_collection.find_one({"phone": phone})
-    print(student)
-    if not student:
-        raise HTTPException(status_code=404, detail="Student not found.")
+    # Search for student with regex to match variations (e.g., +91, 91, or just 10 digits)
+    student = await students_collection.find_one({"phone": {"$regex": f"{phone[-10:]}$"}})
     
-    language = student.get("language", "English")
-    category = student.get("category", "School")
+    # Fallback to defaults to prevent 404 Errors for users who are not registered yet
+    language = student.get("language", "English") if student else "English"
+    category = student.get("category", "School") if student else "School"
     
     cursor = questions_collection.aggregate([
         {"$match": {"language": language, "category": {"$in": [category, "Both"]}}},
