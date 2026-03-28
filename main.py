@@ -143,10 +143,15 @@ async def bulk_add_questions(questions: list[Question]):
     return {"message": f"Successfully added {len(docs)} questions"}
 
 @app.get("/api/questions")
-async def get_questions_by_lang(phone: str, language: str = "English"):
+async def get_questions_by_lang(phone: str):
     phone = normalize_phone(phone)
     student = await students_collection.find_one({"phone": phone})
-    category = student.get("category", "School") if student else "School"
+    print(student)
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found.")
+    
+    language = student.get("language", "English")
+    category = student.get("category", "School")
     
     cursor = questions_collection.aggregate([
         {"$match": {"language": language, "category": {"$in": [category, "Both"]}}},
@@ -156,6 +161,7 @@ async def get_questions_by_lang(phone: str, language: str = "English"):
     async for q in cursor:
         q["_id"] = str(q["_id"])
         questions.append(q)
+    
     return questions
 
 @app.post("/api/submit-assessment")
@@ -165,7 +171,7 @@ async def submit_assessment(submission: AssessmentSubmission):
     if not student:
         raise HTTPException(status_code=403, detail="Student not verified.")
 
-    correct_count = 0
+    correct_count: int = 0
     for answer in submission.answers:
         question = await questions_collection.find_one({"_id": ObjectId(answer.question_id)})
         if question and question["correct_option"] == answer.selected_option:
