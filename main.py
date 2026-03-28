@@ -101,12 +101,18 @@ async def verify_otp(phone: str = Body(...), otp: str = Body(...)):
     if datetime.utcnow() > stored_otp["expires_at"]:
         raise HTTPException(status_code=400, detail="OTP expired.")
     
+    exam_timer = int(os.getenv("EXAM_TIMER", "10").strip())
+    exam_end_time = datetime.utcnow() + timedelta(minutes=exam_timer)
+    
     await students_collection.update_one(
         {"phone": phone},
-        {"$set": {"is_verified": True}}
+        {"$set": {
+            "is_verified": True, 
+            "exam_time": exam_end_time
+        }}
     )
     await otp_collection.delete_one({"phone": phone})
-    return {"message": "Verification successful."}
+    return {"message": "Verification successful.","exam_time":exam_timer}
 
 # Question Management CRUD
 @app.get("/api/admin/questions")
@@ -201,7 +207,11 @@ async def submit_assessment(submission: AssessmentSubmission):
         "timestamp": datetime.utcnow()
     }
     await results_collection.insert_one(result)
-    return {"score": score_percentage, "scholarship": scholarship_percentage}
+    return {
+        "score": score_percentage, 
+        "scholarship": scholarship_percentage,
+        "name": student.get("name", "Unknown")
+    }
 
 @app.get("/api/admin/results")
 async def get_all_results():
