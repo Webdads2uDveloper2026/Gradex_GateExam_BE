@@ -36,13 +36,13 @@ async def startup_db_client():
     count = await questions_collection.count_documents({})
     if count == 0:
         sample_questions = [
-            {"text": "What does HVAC stand for?", "options": ["High Volume Air Cooling", "Heating, Ventilation, and Air Conditioning", "Home Vitality and Care", "None"], "correct_option": 1, "language": "English"},
-            {"text": "Which tag is used to create a hyperlink in HTML?", "options": ["<link>", "<a>", "<div>", "<img>"], "correct_option": 1, "language": "English"},
-            {"text": "What is 15% of 200?", "options": ["20", "30", "40", "50"], "correct_option": 1, "language": "English"},
+            {"text": "What does HVAC stand for?", "options": ["High Volume Air Cooling", "Heating, Ventilation, and Air Conditioning", "Home Vitality and Care", "None"], "correct_option": 1, "language": "English", "category": "Both"},
+            {"text": "Which tag is used to create a hyperlink in HTML?", "options": ["<a>", "<link>", "<div>", "<img>"], "correct_option": 0, "language": "English", "category": "Both"},
+            {"text": "What is 15% of 200?", "options": ["20", "30", "40", "50"], "correct_option": 1, "language": "English", "category": "Both"},
             # Tamil Samples
-            {"text": "HTML-ல் ஒரு ஹைப்பர்லிங்கை உருவாக்க எந்த டேக் பயன்படுத்தப்படுகிறது?", "options": ["<link>", "<a>", "<div>", "<img>"], "correct_option": 1, "language": "Tamil"},
-            {"text": "கணினியின் மூளை என்று அழைக்கப்படுவது எது?", "options": ["RAM", "CPU", "GPU", "Hard Disk"], "correct_option": 1, "language": "Tamil"},
-            {"text": "200-ல் 15% எவ்வளவு?", "options": ["20", "30", "40", "50"], "correct_option": 1, "language": "Tamil"}
+            {"text": "HTML-ல் ஒரு ஹைப்பர்லிங்கை உருவாக்க எந்த டேக் பயன்படுத்தப்படுகிறது?", "options": ["<a>", "<link>", "<div>", "<img>"], "correct_option": 0, "language": "Tamil", "category": "Both"},
+            {"text": "கணினியின் மூளை என்று அழைக்கப்படுவது எது?", "options": ["RAM", "CPU", "GPU", "Hard Disk"], "correct_option": 1, "language": "Tamil", "category": "Both"},
+            {"text": "200-ல் 15% எவ்வளவு?", "options": ["20", "30", "40", "50"], "correct_option": 1, "language": "Tamil", "category": "Both"}
         ]
         await questions_collection.insert_many(sample_questions)
         print("Seeded sample questions.")
@@ -150,10 +150,23 @@ async def get_questions_by_lang(phone: str):
     
     # Fallback to defaults to prevent 404 Errors for users who are not registered yet
     language = student.get("language", "English") if student else "English"
+    # Ensure category is a valid one from ['School', 'College', 'Both']
     category = student.get("category", "School") if student else "School"
+    if category not in ["School", "College", "Both"]:
+        category = "School"
+    
+    # Match for (Language) AND (Category matches student choice OR is 'Both' OR has no category)
+    match_query = {
+        "language": language,
+        "$or": [
+            {"category": category},
+            {"category": "Both"},
+            {"category": {"$exists": False}}
+        ]
+    }
     
     cursor = questions_collection.aggregate([
-        {"$match": {"language": language, "category": {"$in": [category, "Both"]}}},
+        {"$match": match_query},
         {"$sample": {"size": 20}}
     ])
     questions = []
